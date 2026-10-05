@@ -4,6 +4,8 @@ Move tens of thousands of glowing particles with your hands, using just your web
 
 Pinch and they gather into a swirling ball at your fingertips. Open your palm and they blast away. Point and they orbit your finger. Make a fist and they drift back into shape. Works with two hands at once, and with a mouse if you don't have a camera.
 
+**▶ Try it:** https://handfield-vert.vercel.app (allow camera access when asked)
+
 Built while playing with **[MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker)** hand tracking and **[Three.js](https://threejs.org)** via **[React Three Fiber](https://r3f.docs.pmnd.rs)**.
 
 ---
@@ -64,6 +66,10 @@ npm run dev
 Open http://localhost:3000 and click **Use my hands**. The camera only works on `localhost` or HTTPS.
 
 **Testing without a camera:** add `?video=<url>` to the address to drive the scene from a video file instead (it must be same-origin or CORS-enabled).
+
+## Deploy
+
+Hosted on Vercel with the GitHub repo connected, so every push to `main` deploys to production. No environment variables are needed. The camera only works over HTTPS (or on `localhost`), which Vercel provides.
 
 ## Privacy
 
