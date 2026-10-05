@@ -60,7 +60,9 @@ export function useHandTracking(videoRef: React.RefObject<HTMLVideoElement | nul
           })
           video.srcObject = stream
         }
-        const [landmarker] = await Promise.all([createLandmarker(), video.play()])
+        // play() can be interrupted (e.g. the browser pausing background media to save power); try once more.
+        const play = () => video.play().catch(() => new Promise((r) => setTimeout(r, 400)).then(() => video.play()))
+        const [landmarker] = await Promise.all([createLandmarker(), play()])
 
         let raf = 0
         let lastTime = -1

@@ -165,7 +165,7 @@ export function HandfieldApp() {
 
   return (
     <div
-      className="relative h-svh w-full touch-none overflow-hidden bg-black text-white select-none"
+      className="relative h-svh w-full touch-none overflow-hidden bg-black text-white select-none [--preview-w:60vw] sm:[--preview-w:min(42vw,560px)]"
       onPointerMove={onPointer}
       onPointerDown={onPointer}
       onPointerUp={onPointer}
@@ -202,7 +202,7 @@ export function HandfieldApp() {
             ? "hidden"
             : camView === "full"
               ? "pointer-events-none absolute inset-0 z-0"
-              : "pointer-events-none absolute top-4 right-4 z-20 h-[180px] w-[240px] overflow-hidden rounded-xl border border-white/15 bg-black/60 shadow-2xl sm:h-[300px] sm:w-[400px]"
+              : "pointer-events-none absolute top-4 right-4 z-20 aspect-[4/3] w-[var(--preview-w)] overflow-hidden rounded-xl border border-white/15 bg-black/60 shadow-2xl"
         }
       >
         <video
@@ -221,7 +221,7 @@ export function HandfieldApp() {
 
       {/* Gesture labels and view switch */}
       {(status === "on" || status === "starting") && (
-        <div data-ui className={`absolute right-4 z-30 flex flex-col items-end gap-1.5 ${camView === "corner" ? "top-[200px] sm:top-[320px]" : "top-4"}`}>
+        <div data-ui className={`absolute right-4 z-30 flex flex-col items-end gap-1.5 ${camView === "corner" ? "top-[calc(var(--preview-w)*0.75+1.75rem)]" : "top-4"}`}>
           <Button
             size="sm"
             variant="secondary"
