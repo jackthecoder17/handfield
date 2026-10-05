@@ -42,9 +42,14 @@ export function anchor(points: P[], gesture: Gesture): P {
   return c
 }
 
-export function toForce(points: P[], gesture: Gesture): Force | null {
+type Cover = { ax: number; bx: number; ay: number; by: number } | null
+
+/** Converts camera-image coordinates (0..1) to screen coordinates (0..1). */
+export const toScreen = (p: P, cover: Cover) => (cover ? { x: cover.ax * p.x + cover.bx, y: cover.ay * p.y + cover.by } : p)
+
+export function toForce(points: P[], gesture: Gesture, cover: Cover = null): Force | null {
   if (gesture === "fist") return null // a fist lets go: particles drift home
-  const a = anchor(points, gesture)
+  const a = toScreen(anchor(points, gesture), cover)
   return {
     x: a.x - 0.5,
     y: 0.5 - a.y,

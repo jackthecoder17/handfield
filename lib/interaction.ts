@@ -23,5 +23,10 @@ export const interaction = {
   forces: [] as Force[],
   hands: [] as TrackedHand[],
   mouse: null as Force | null,
+  /**
+   * When the camera fills the screen (object-fit: cover), maps camera-image coordinates to
+   * screen coordinates so forces land exactly under the hand you see: screen = a * camera + b.
+   */
+  cover: null as { ax: number; bx: number; ay: number; by: number } | null,
   mouseMovedAt: 0,
 }

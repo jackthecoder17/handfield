@@ -3,10 +3,10 @@
 import * as React from "react"
 import { Canvas } from "@react-three/fiber"
 import { Bloom, EffectComposer } from "@react-three/postprocessing"
-import { HandIcon, Loader2Icon, MousePointer2Icon, VideoOffIcon } from "lucide-react"
+import { HandIcon, Loader2Icon, Maximize2Icon, Minimize2Icon, MousePointer2Icon, VideoOffIcon } from "lucide-react"
 import { toast } from "sonner"
 
-import { GESTURE_LABELS } from "@/lib/gestures"
+import { GESTURE_LABELS, toScreen } from "@/lib/gestures"
 import { interaction, type Gesture } from "@/lib/interaction"
 import { PALETTES, SHAPES, type PaletteName, type ShapeName } from "@/lib/shapes"
 import { useHandTracking } from "@/lib/use-hand-tracking"
@@ -37,6 +37,8 @@ export function HandfieldApp() {
   const [palette, setPalette] = React.useState<PaletteName>("aurora")
   const [count, setCount] = React.useState(35000)
   const [gestures, setGestures] = React.useState<{ side: string; gesture: Gesture }[]>([])
+  // "full" puts your mirrored camera behind the particles so you can see yourself; "corner" is a preview.
+  const [camView, setCamView] = React.useState<"corner" | "full">("full")
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const skeletonRef = React.useRef<HTMLCanvasElement>(null)
   const { status, error, start, stop } = useHandTracking(videoRef)
@@ -47,8 +49,10 @@ export function HandfieldApp() {
 
   // Fewer particles on small or low-core devices.
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- screen size and cores are only known in the browser
-    if (window.innerWidth < 700 || (navigator.hardwareConcurrency ?? 8) <= 4) setCount(15000)
+    if (window.innerWidth < 700 || (navigator.hardwareConcurrency ?? 8) <= 4) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- screen size and cores are only known in the browser
+      setCount(15000)
+    }
   }, [])
 
   // ?video=<url> drives the scene from a video file instead of the webcam (handy for demos and testing).
@@ -56,6 +60,39 @@ export function HandfieldApp() {
     const source = new URLSearchParams(window.location.search).get("video") ?? undefined
     start(source)
   }, [start])
+
+  // In full-screen view the camera is cropped to fill the window (object-fit: cover). Work out that
+  // crop so forces and the skeleton line up with the hand you actually see on screen.
+  React.useEffect(() => {
+    const video = videoRef.current
+    if (camView !== "full" || status !== "on" || !video) {
+      interaction.cover = null
+      return
+    }
+    const update = () => {
+      const W = window.innerWidth
+      const H = window.innerHeight
+      const vw = video.videoWidth || 4
+      const vh = video.videoHeight || 3
+      const scale = Math.max(W / vw, H / vh)
+      const dw = (vw * scale) / W
+      const dh = (vh * scale) / H
+      interaction.cover = {
+        ax: dw,
+        bx: (1 - dw) / 2,
+        ay: dh,
+        by: (1 - dh) / 2,
+      }
+    }
+    update()
+    window.addEventListener("resize", update)
+    video.addEventListener("loadedmetadata", update)
+    return () => {
+      window.removeEventListener("resize", update)
+      video.removeEventListener("loadedmetadata", update)
+      interaction.cover = null
+    }
+  }, [camView, status])
 
   // Draw the hand skeleton over the webcam preview and keep the gesture labels in sync.
   React.useEffect(() => {
@@ -66,30 +103,46 @@ export function HandfieldApp() {
       raf = requestAnimationFrame(draw)
       const canvas = skeletonRef.current
       if (!canvas) return
+      // Match the canvas to its on-screen size so lines stay crisp in both views.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      const cw = Math.round(canvas.clientWidth * dpr)
+      const ch = Math.round(canvas.clientHeight * dpr)
+      if (canvas.width !== cw || canvas.height !== ch) {
+        canvas.width = cw
+        canvas.height = ch
+      }
       const ctx = canvas.getContext("2d")!
       const { width: w, height: h } = canvas
       ctx.clearRect(0, 0, w, h)
       for (const hand of interaction.hands) {
+        const pts = hand.points.map((p) => toScreen(p, interaction.cover))
         const color = hand.gesture === "pinch" ? "#ffe14d" : hand.gesture === "palm" ? "#ff5c8a" : "#3cf2ff"
         ctx.strokeStyle = color
-        ctx.lineWidth = 2
+        ctx.lineWidth = 2 * dpr
+        ctx.globalAlpha = 0.8
         ctx.beginPath()
         for (const [a, b] of BONES) {
-          ctx.moveTo(hand.points[a].x * w, hand.points[a].y * h)
-          ctx.lineTo(hand.points[b].x * w, hand.points[b].y * h)
+          ctx.moveTo(pts[a].x * w, pts[a].y * h)
+          ctx.lineTo(pts[b].x * w, pts[b].y * h)
         }
         ctx.stroke()
         ctx.fillStyle = "#fff"
-        for (const p of hand.points) {
+        for (const p of pts) {
           ctx.beginPath()
-          ctx.arc(p.x * w, p.y * h, 2.2, 0, Math.PI * 2)
+          ctx.arc(p.x * w, p.y * h, 2.4 * dpr, 0, Math.PI * 2)
           ctx.fill()
         }
+        ctx.globalAlpha = 1
       }
       const labels = interaction.hands.map((hd) => `${hd.side}:${hd.gesture}`).join("|")
       if (labels !== lastLabels) {
         lastLabels = labels
-        setGestures(interaction.hands.map((hd) => ({ side: hd.side, gesture: hd.gesture })))
+        setGestures(
+          interaction.hands.map((hd) => ({
+            side: hd.side,
+            gesture: hd.gesture,
+          })),
+        )
       }
     }
     draw()
@@ -122,10 +175,13 @@ export function HandfieldApp() {
       <Canvas
         camera={{ position: [0, 0, 6], fov: 50 }}
         dpr={[1, 2]}
-        gl={{ antialias: false, powerPreference: "high-performance" }}
-        className="absolute inset-0"
+        gl={{
+          antialias: false,
+          alpha: true,
+          powerPreference: "high-performance",
+        }}
+        className="absolute inset-0 z-10"
       >
-        <color attach="background" args={["#020205"]} />
         <ParticleField count={count} shape={shape} palette={palette} size={3.2} />
         <EffectComposer>
           <Bloom intensity={0.9} luminanceThreshold={0.25} luminanceSmoothing={0.4} mipmapBlur />
@@ -133,23 +189,48 @@ export function HandfieldApp() {
       </Canvas>
 
       {/* Brand */}
-      <div className="pointer-events-none absolute top-0 left-0 flex flex-col gap-1 p-5">
+      <div className="pointer-events-none absolute top-0 left-0 z-20 flex flex-col gap-1 p-5">
         <span className="font-heading text-xl font-bold tracking-tight">Handfield</span>
         <span className="text-xs text-white/60">Move particles with your hands</span>
       </div>
 
-      {/* Webcam preview with the tracked skeleton */}
-      <div data-ui className={status === "on" || status === "starting" ? "absolute top-4 right-4 flex flex-col items-end gap-2" : "hidden"}>
-        <div className="relative h-[120px] w-[160px] overflow-hidden rounded-lg border border-white/15 bg-black/60 shadow-lg sm:h-[150px] sm:w-[200px]">
-          <video ref={videoRef} playsInline muted className="absolute inset-0 size-full -scale-x-100 object-cover opacity-70" />
-          <canvas ref={skeletonRef} width={400} height={300} className="absolute inset-0 size-full" />
-          {status === "starting" && (
-            <div className="absolute inset-0 grid place-items-center text-xs text-white/80">
-              <Loader2Icon className="size-4 animate-spin" />
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col items-end gap-1">
+      {/* Your camera: behind the particles in full-screen view, or a large preview in the corner */}
+      {/* One video element stays mounted the whole time: tracking attaches the camera to it on start. */}
+      <div
+        className={
+          status !== "on" && status !== "starting"
+            ? "hidden"
+            : camView === "full"
+              ? "pointer-events-none absolute inset-0 z-0"
+              : "pointer-events-none absolute top-4 right-4 z-20 h-[180px] w-[240px] overflow-hidden rounded-xl border border-white/15 bg-black/60 shadow-2xl sm:h-[300px] sm:w-[400px]"
+        }
+      >
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          className={`absolute inset-0 size-full -scale-x-100 object-cover ${camView === "full" ? "opacity-60" : "opacity-90"}`}
+        />
+        <canvas ref={skeletonRef} className="absolute inset-0 size-full" />
+        {status === "starting" && (
+          <div className="absolute inset-0 grid place-items-center text-sm text-white/80">
+            <Loader2Icon className="size-5 animate-spin" />
+          </div>
+        )}
+      </div>
+
+      {/* Gesture labels and view switch */}
+      {(status === "on" || status === "starting") && (
+        <div data-ui className={`absolute right-4 z-30 flex flex-col items-end gap-1.5 ${camView === "corner" ? "top-[200px] sm:top-[320px]" : "top-4"}`}>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="bg-white/10 text-white backdrop-blur hover:bg-white/20"
+            onClick={() => setCamView(camView === "full" ? "corner" : "full")}
+          >
+            {camView === "full" ? <Minimize2Icon data-icon="inline-start" /> : <Maximize2Icon data-icon="inline-start" />}
+            {camView === "full" ? "Small camera" : "Full screen camera"}
+          </Button>
           {status === "on" && gestures.length === 0 && <Badge variant="secondary">Show your hand to the camera</Badge>}
           {gestures.map((g) => (
             <Badge key={g.side} variant="secondary" className="bg-white/10 text-white backdrop-blur">
@@ -157,10 +238,10 @@ export function HandfieldApp() {
             </Badge>
           ))}
         </div>
-      </div>
+      )}
 
       {/* Control dock */}
-      <div data-ui className="absolute inset-x-0 bottom-0 flex justify-center p-4">
+      <div data-ui className="absolute inset-x-0 bottom-0 z-20 flex justify-center p-4">
         <div className="flex max-w-full flex-wrap items-center justify-center gap-3 rounded-2xl border border-white/10 bg-black/55 p-2.5 backdrop-blur-md">
           {status === "on" ? (
             <Button variant="secondary" onClick={stop}>
@@ -193,7 +274,9 @@ export function HandfieldApp() {
                 aria-pressed={palette === p}
                 onClick={() => setPalette(p)}
                 className="size-6 rounded-full border border-white/20 aria-pressed:ring-2 aria-pressed:ring-white aria-pressed:ring-offset-2 aria-pressed:ring-offset-black"
-                style={{ background: `linear-gradient(135deg, ${PALETTES[p].a}, ${PALETTES[p].b})` }}
+                style={{
+                  background: `linear-gradient(135deg, ${PALETTES[p].a}, ${PALETTES[p].b})`,
+                }}
               />
             ))}
           </div>
@@ -209,7 +292,7 @@ export function HandfieldApp() {
       </div>
 
       {/* Help */}
-      <div className="pointer-events-none absolute bottom-24 left-1/2 hidden -translate-x-1/2 items-center gap-2 text-xs text-white/50 sm:flex">
+      <div className="pointer-events-none absolute bottom-24 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-2 text-xs text-white/50 sm:flex">
         {status === "on" ? (
           <>
             <HandIcon className="size-3.5" /> Pinch to gather · open palm to blast · point to swirl · fist to let go
@@ -226,7 +309,7 @@ export function HandfieldApp() {
         href={GITHUB_URL}
         target="_blank"
         rel="noreferrer"
-        className="absolute top-5 left-1/2 hidden -translate-x-1/2 text-xs text-white/50 underline-offset-4 hover:text-white hover:underline sm:block"
+        className="absolute top-5 left-1/2 z-20 hidden -translate-x-1/2 text-xs text-white/50 underline-offset-4 hover:text-white hover:underline sm:block"
       >
         Built with MediaPipe + Three.js · open source
       </a>

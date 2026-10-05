@@ -84,7 +84,7 @@ export function useHandTracking(videoRef: React.RefObject<HTMLVideoElement | nul
           for (const key of Object.keys(smooth)) if (!hands.some((h) => h.side === key)) delete smooth[key]
 
           interaction.hands = hands
-          interaction.forces = hands.map((h) => toForce(h.points, h.gesture)).filter((f) => f !== null)
+          interaction.forces = hands.map((h) => toForce(h.points, h.gesture, interaction.cover)).filter((f) => f !== null)
         }
         loop()
         setStatus("on")
